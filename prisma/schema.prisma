@@ -1,0 +1,292 @@
+// This is your Prisma schema file
+// Learn more: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// ADMIN & AUTH
+// ============================================================================
+
+model Admin {
+  id            String   @id @default(uuid())
+  cognitoId     String   @unique
+  email         String   @unique
+  name          String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  events        Event[]
+  auditLogs     AuditLog[]
+  
+  @@map("admins")
+}
+
+// ============================================================================
+// EVENTS
+// ============================================================================
+
+model Event {
+  id                   String    @id @default(uuid())
+  name                 String
+  description          String?
+  startDate            DateTime  // First day of event period
+  endDate              DateTime  // Last day of event period
+  timezone             String    @default("America/New_York")
+  shiftLabel           String    // e.g., "6:30 PM – 8:30 PM"
+  publicId             String    @unique @default(cuid()) // Unguessable URL slug
+  
+  // Google Drive/Sheets integration
+  driveFolderId        String?
+  sheetsSpreadsheetId  String?
+  
+  // Metadata
+  createdById          String
+  createdBy            Admin     @relation(fields: [createdById], references: [id])
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  
+  // Relations
+  sevaTypes            SevaType[]
+  days                 Day[]
+  
+  @@index([publicId])
+  @@index([createdById])
+  @@map("events")
+}
+
+// ============================================================================
+// SEVA TYPES (NOT HARD-CODED - ADMIN DEFINED)
+// ============================================================================
+
+model SevaType {
+  id              String   @id @default(uuid())
+  eventId         String
+  event           Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  
+  name            String   // e.g., "Kitchen Seva", "Hall Cleaning"
+  description     String?  // Instructions for volunteers
+  defaultCapacity Int      @default(4)
+  
+  isActive        Boolean  @default(true)
+  sortOrder       Int      @default(0) // Display order
+  
+  // Optional styling
+  icon            String?  // Icon name or emoji
+  color           String?  // Hex color code
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Relations
+  slots           Slot[]
+  
+  @@unique([eventId, name])
+  @@index([eventId, isActive])
+  @@map("seva_types")
+}
+
+// ============================================================================
+// DAYS & SLOTS
+// ============================================================================
+
+model Day {
+  id        String    @id @default(uuid())
+  eventId   String
+  event     Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  
+  date      DateTime  @db.Date // Date only (no time component)
+  dayOfWeek Int       // 0=Sunday, 6=Saturday (for validation)
+  
+  isClosed  Boolean   @default(false) // Admin can close entire day
+  notes     String?   // Admin notes (e.g., "Holiday - Temple Closed")
+  
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  
+  // Relations
+  slots     Slot[]
+  
+  @@unique([eventId, date])
+  @@index([eventId, date])
+  @@map("days")
+}
+
+model Slot {
+  id          String     @id @default(uuid())
+  dayId       String
+  day         Day        @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  
+  sevaTypeId  String
+  sevaType    SevaType   @relation(fields: [sevaTypeId], references: [id], onDelete: Cascade)
+  
+  capacity    Int        // Can be overridden from SevaType.defaultCapacity
+  filledCount Int        @default(0)
+  
+  status      SlotStatus @default(ACTIVE)
+  
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  
+  // Relations
+  signups     Signup[]
+  
+  @@unique([dayId, sevaTypeId])
+  @@index([dayId])
+  @@index([sevaTypeId])
+  @@map("slots")
+}
+
+enum SlotStatus {
+  ACTIVE    // Available for signups
+  FULL      // Capacity reached
+  CLOSED    // Admin closed this slot
+}
+
+// ============================================================================
+// VOLUNTEER SIGNUPS
+// ============================================================================
+
+model Signup {
+  id              String       @id @default(uuid())
+  slotId          String
+  slot            Slot         @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  
+  // Volunteer info
+  name            String
+  email           String
+  phone           String?
+  notes           String?      // Volunteer's notes/comments
+  
+  // Cancellation
+  cancelToken     String       @unique @default(cuid()) // Plain token (for URL)
+  cancelTokenHash String       @unique // SHA-256 hash (stored in DB)
+  
+  status          SignupStatus @default(CONFIRMED)
+  
+  createdAt       DateTime     @default(now())
+  cancelledAt     DateTime?
+  
+  // Relations
+  exportSyncLogs  ExportSyncLog[]
+  notifications   NotificationLog[]
+  
+  @@index([slotId])
+  @@index([email])
+  @@index([cancelTokenHash])
+  @@index([createdAt])
+  @@map("signups")
+}
+
+enum SignupStatus {
+  CONFIRMED
+  CANCELLED
+}
+
+// ============================================================================
+// EXPORT & SYNC TRACKING
+// ============================================================================
+
+model ExportSyncLog {
+  id                   String           @id @default(uuid())
+  signupId             String
+  signup               Signup           @relation(fields: [signupId], references: [id], onDelete: Cascade)
+  
+  // S3 tracking
+  s3Key                String?          // S3 object key
+  s3VersionId          String?          // S3 version ID
+  s3SyncedAt           DateTime?
+  
+  // Google Sheets tracking
+  sheetsSpreadsheetId  String?
+  sheetsRowId          Int?             // Row number in sheet
+  sheetsSyncedAt       DateTime?
+  
+  // Status
+  status               SyncStatus       @default(PENDING)
+  retryCount           Int              @default(0)
+  lastError            String?          @db.Text
+  lastAttemptedAt      DateTime?
+  
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  
+  @@index([signupId])
+  @@index([status])
+  @@map("export_sync_logs")
+}
+
+enum SyncStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+// ============================================================================
+// NOTIFICATIONS
+// ============================================================================
+
+model NotificationLog {
+  id                 String           @id @default(uuid())
+  signupId           String
+  signup             Signup           @relation(fields: [signupId], references: [id], onDelete: Cascade)
+  
+  type               NotificationType
+  recipient          String           // Email address
+  
+  status             NotificationStatus @default(PENDING)
+  sentAt             DateTime?
+  
+  providerMessageId  String?          // SES Message ID
+  error              String?          @db.Text
+  
+  createdAt          DateTime         @default(now())
+  
+  @@index([signupId])
+  @@index([type])
+  @@map("notification_logs")
+}
+
+enum NotificationType {
+  CONFIRMATION  // Signup confirmation
+  CANCELLATION  // Cancellation confirmation
+  REMINDER      // Optional reminder before event
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+// ============================================================================
+// AUDIT LOG
+// ============================================================================
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  adminId     String
+  admin       Admin    @relation(fields: [adminId], references: [id])
+  
+  action      String   // e.g., "CREATE_EVENT", "CLOSE_DAY", "MANUAL_SIGNUP"
+  entityType  String   // e.g., "Event", "Day", "Slot", "Signup"
+  entityId    String?
+  
+  metadata    Json?    // Additional context
+  
+  ipAddress   String?
+  userAgent   String?
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([adminId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
