@@ -13,6 +13,7 @@ A production-ready, calendar-based volunteer sign-up web application for recurri
 
 ### Troubleshooting
 - **[🚨 Database Auth Error Fix](./FIX_DB_AUTH.md)** - Quick fix for P1000 error
+- **[🔧 Build Error Fix](./FIX_BUILD_ERROR.md)** - Fix date-fns compatibility issues
 - **[Copy & Paste DB Commands](./COPY_PASTE_DB_FIX.md)** - Terminal commands ready to use
 - **[Complete DB Troubleshooting](./TROUBLESHOOT_DB.md)** - Comprehensive database guide
 
