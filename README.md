@@ -2,6 +2,23 @@
 
 A production-ready, calendar-based volunteer sign-up web application for recurring temple/event volunteering, similar to SignUpGenius.
 
+## 🚀 Quick Links
+
+### Deployment & Setup
+- **[30-Minute AWS Quick Start](./QUICKSTART_AWS.md)** - Fast deployment guide
+- **[Complete AWS Testing Guide](./AWS_TESTING_GUIDE.md)** - 100+ step manual
+- **[AWS Architecture Diagrams](./AWS_ARCHITECTURE.md)** - Visual infrastructure guide
+- **[Setup Checklist](./AWS_SETUP_COMPLETE.md)** - Master deployment checklist
+- **[AWS Summary](./AWS_README.md)** - What was delivered
+
+### Troubleshooting
+- **[🚨 Database Auth Error Fix](./FIX_DB_AUTH.md)** - Quick fix for P1000 error
+- **[Copy & Paste DB Commands](./COPY_PASTE_DB_FIX.md)** - Terminal commands ready to use
+- **[Complete DB Troubleshooting](./TROUBLESHOOT_DB.md)** - Comprehensive database guide
+
+### Frontend
+- **[Frontend Implementation](./FRONTEND_SUMMARY.md)** - UI components documentation
+
 ## Architecture Overview
 
 ```
